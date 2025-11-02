@@ -27,7 +27,7 @@ jobs:
       - name: 🔍 Run Snyk Dependency Scan
         uses: snyk/actions/node@master
         env:
-          SNYK_TOKEN: a165e64b-65fa-4ec4-873b-1a1e9c7a9238
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: test --json-file-output=reports/snyk.json || true
 
