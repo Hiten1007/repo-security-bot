@@ -76,8 +76,19 @@ jobs:
         continue-on-error: true
         run: |
           if [ -f "Dockerfile" ]; then
+            echo "Dockerfile found. Building and scanning..."
+            
+            # 1. BUILD THE IMAGE: This is the step you were missing
+            # We give it a temporary name like "my-scan-image"
+            docker build -t my-scan-image:latest .
+            
+            # 2. SCAN THE IMAGE: Now we point dockle at the IMAGE NAME
             docker pull goodwithtech/dockle
-            docker run --rm -v $(pwd):/app goodwithtech/dockle dockle /app/Dockerfile > reports/dockle.txt || true
+            docker run --rm goodwithtech/dockle:latest \
+              -f json \
+              -o reports/dockle.json \
+              my-scan-image:latest || true
+              
           else
             echo "No Dockerfile found. Skipping Dockle scan." > reports/dockle.txt
           fi
