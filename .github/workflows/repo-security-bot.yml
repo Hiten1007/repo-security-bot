@@ -26,6 +26,9 @@ jobs:
         with:
           report_path: reports/gitleaks.json
           report_format: json
+          # FIX: Tell the action 'fail: false' so it ALWAYS writes the
+          # JSON report, even when secrets are found.
+          fail: false
 
       # --- 2. 🔍 Dependency Scanning (Snyk) ---
       - name: Setup Snyk
@@ -71,7 +74,6 @@ jobs:
           fi
 
       # --- 3. 🧱 IaC Scanning (Checkov) ---
-      # FIX: Run Checkov to output to a root file, as it can misinterpret paths
       - name: Run Checkov
         continue-on-error: true
         uses: bridgecrewio/checkov-action@master
@@ -80,9 +82,8 @@ jobs:
           output_format: json
           output_file_path: checkov_results.json # Output to root
 
-      # FIX: Move the report to the 'reports' folder for consistency
       - name: Move Checkov Report
-        if: always() # Always run this, even if Checkov found issues
+        if: always() 
         run: |
           if [ -f "checkov_results.json" ]; then
             mv checkov_results.json reports/
@@ -105,8 +106,6 @@ jobs:
             docker pull goodwithtech/dockle
             
             # 3. SCAN THE IMAGE
-            # FIX 1: Mount the Docker socket to allow the Dockle container to see host images
-            # FIX 2: Mount the 'reports' dir to '/reports' in the container
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v ${{ github.workspace }}/reports:/reports \
@@ -135,12 +134,13 @@ jobs:
 
       # --- 6. 🧩 Generate Markdown Summary (FIXED) ---
       - name: Generate Markdown Summary
-        if: always() # Always run this step to generate a summary
+        if: always() 
         run: |
           echo "# 🔒 Security Scan Summary" > reports/security-summary.md
           echo "" >> reports/security-summary.md
 
           echo "## 🕵️ Gitleaks (Secrets Scan)" >> reports/security-summary.md
+          # This 'if' check will now find the non-empty file
           if [ -s "reports/gitleaks.json" ]; then
             echo '```json' >> reports/security-summary.md
             cat reports/gitleaks.json >> reports/security-summary.md
@@ -161,7 +161,6 @@ jobs:
           echo "" >> reports/security-summary.md
 
           echo "## 🧱 Checkov (IaC Scan)" >> reports/security-summary.md
-          # FIX: Read from the correct, moved file
           if [ -s "reports/checkov_results.json" ]; then
             if grep -q "Checkov scan failed" reports/checkov_results.json; then
               echo "_Checkov scan failed or no files found._" >> reports/security-summary.md
@@ -208,7 +207,7 @@ jobs:
 
       # --- 7. 📦 Upload Summary Report ---
       - name: Upload Summary Report
-        if: always() # Always run this
+        if: always() 
         uses: actions/upload-artifact@v4
         with:
           name: security-summary
