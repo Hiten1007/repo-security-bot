@@ -1,31 +1,31 @@
-name: 🔒 Repo Security Bot
+name: "🔒 Repo Security Bot"
 
 on:
   push:
     branches: [ main ]
   pull_request:
   schedule:
-    - cron: "0 12 * * *" # runs daily at noon
+    - cron: "0 12 * * *"
   workflow_dispatch:
 
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+
     steps:
+      # ✅ 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ✅ Create reports folder
       - name: Create reports folder
         run: mkdir -p reports
 
-      # --- 1. 🕵️ Secrets Scanning (Gitleaks) ---
+      # ✅ 2. Gitleaks – Secrets scanning
       - name: Run Gitleaks
         continue-on-error: true
         run: |
-          echo "Pulling Gitleaks image..."
           docker pull ghcr.io/gitleaks/gitleaks:latest
-          
-          echo "Running Gitleaks..."
           docker run --rm \
             -v ${{ github.workspace }}:/repo \
             ghcr.io/gitleaks/gitleaks:latest detect \
@@ -34,17 +34,15 @@ jobs:
             --report-format json \
             --exit-code 0
 
-      # --- 2. 🔍 Dependency Scanning (Snyk) ---
+      # ✅ 3. Snyk dependency scanning
       - name: Setup Snyk
         uses: snyk/actions/setup@master
-        
-      - name: Run Snyk Dependency Scan (multi-language)
+
+      - name: Run Snyk Dependency Scan
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          set -e
-          echo "Checking for dependency files..."
           if [ -f "package.json" ]; then
             snyk test --json-file-output=reports/snyk.json || true
           elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "Pipfile" ]; then
@@ -64,24 +62,24 @@ jobs:
           elif ls *.csproj >/dev/null 2>&1; then
             snyk test --json-file-output=reports/snyk.json || true
           else
-            echo '{"message": "No dependency files found, skipped Snyk scan."}' > reports/snyk.json
+            echo '{"message":"No dependency files found"}' > reports/snyk.json
           fi
 
-      # --- 3. 🧱 IaC Scanning (Checkov via CLI) ---
+      # ✅ 4. Checkov (IaC scanning) — correctly installed via Pip
       - name: Install Checkov
         run: pip install checkov
 
       - name: Run Checkov
         continue-on-error: true
         run: |
+          echo "Running Checkov on Terraform, CloudFormation, Kubernetes, ARM, Helm..."
           checkov -d . -o json > reports/checkov_results.json || true
 
-      # --- 4. 🐳 Docker Hardening (Dockle) ---
+      # ✅ 5. Docker Hardening (Dockle)
       - name: Run Dockle
         continue-on-error: true
         run: |
           if [ -f "Dockerfile" ]; then
-            echo "Dockerfile found. Building and scanning..."
             docker build -t my-scan-image:latest .
             docker pull goodwithtech/dockle
             docker run --rm \
@@ -92,10 +90,10 @@ jobs:
               -o /reports/dockle.json \
               my-scan-image:latest || true
           else
-            echo '{"message": "No Dockerfile found, skipped Dockle scan."}' > reports/dockle.json
+            echo '{"message":"No Dockerfile found"}' > reports/dockle.json
           fi
 
-      # --- 5. 🐍 Python Security (Bandit) ---
+      # ✅ 6. Bandit — Python static analysis
       - name: Run Bandit
         continue-on-error: true
         run: |
@@ -103,72 +101,46 @@ jobs:
             pip install bandit
             bandit -r . -f json -o reports/bandit.json || true
           else
-            echo '{"message": "No Python files found, skipped Bandit scan."}' > reports/bandit.json
+            echo '{"message":"No Python files found"}' > reports/bandit.json
           fi
 
-      # --- 6. 🧩 Generate Markdown Summary ---
+      # ✅ 7. Markdown Summary Generation
       - name: Generate Markdown Summary
-        if: always() 
+        if: always()
         run: |
           echo "# 🔒 Security Scan Summary" > reports/security-summary.md
-          echo "" >> reports/security-summary.md
 
           echo "## 🕵️ Gitleaks (Secrets Scan)" >> reports/security-summary.md
-          if [ -s "reports/gitleaks.json" ]; then
-            echo '```json' >> reports/security-summary.md
-            cat reports/gitleaks.json >> reports/security-summary.md
-            echo '```' >> reports/security-summary.md
-          else
-            echo "_No secrets found or scan failed._" >> reports/security-summary.md
-          fi
-          echo "" >> reports/security-summary.md
+          echo '```json' >> reports/security-summary.md
+          cat reports/gitleaks.json >> reports/security-summary.md
+          echo '```' >> reports/security-summary.md
 
           echo "## 🔍 Snyk (Dependency Scan)" >> reports/security-summary.md
-          if [ -s "reports/snyk.json" ]; then
-            echo '```json' >> reports/security-summary.md
-            cat reports/snyk.json >> reports/security-summary.md
-            echo '```' >> reports/security-summary.md
-          else
-            echo "_No dependencies found or scan failed._" >> reports/security-summary.md
-          fi
-          echo "" >> reports/security-summary.md
+          echo '```json' >> reports/security-summary.md
+          cat reports/snyk.json >> reports/security-summary.md
+          echo '```' >> reports/security-summary.md
 
           echo "## 🧱 Checkov (IaC Scan)" >> reports/security-summary.md
-          if [ -s "reports/checkov_results.json" ]; then
-            echo '```json' >> reports/security-summary.md
-            cat reports/checkov_results.json >> reports/security-summary.md
-            echo '```' >> reports/security-summary.md
-          else
-            echo "_Checkov report not found._" >> reports/security-summary.md
-          fi
-          echo "" >> reports/security-summary.md
+          echo '```json' >> reports/security-summary.md
+          cat reports/checkov_results.json >> reports/security-summary.md
+          echo '```' >> reports/security-summary.md
 
           echo "## 🐳 Dockle (Docker Hardening)" >> reports/security-summary.md
-          if [ -s "reports/dockle.json" ]; then
-            echo '```json' >> reports/security-summary.md
-            cat reports/dockle.json >> reports/security-summary.md
-            echo '```' >> reports/security-summary.md
-          else
-            echo "_Dockle scan failed._" >> reports/security-summary.md
-          fi
-          echo "" >> reports/security-summary.md
+          echo '```json' >> reports/security-summary.md
+          cat reports/dockle.json >> reports/security-summary.md
+          echo '```' >> reports/security-summary.md
 
           echo "## 🐍 Bandit (Python Security)" >> reports/security-summary.md
-          if [ -s "reports/bandit.json" ]; then
-            echo '```json' >> reports/security-summary.md
-            cat reports/bandit.json >> reports/security-summary.md
-            echo '```' >> reports/security-summary.md
-          else
-            echo "_Bandit scan failed._" >> reports/security-summary.md
-          fi
-          echo "" >> reports/security-summary.md
+          echo '```json' >> reports/security-summary.md
+          cat reports/bandit.json >> reports/security-summary.md
+          echo '```' >> reports/security-summary.md
 
           echo "---" >> reports/security-summary.md
           echo "_Generated automatically by Repo Security Bot_" >> reports/security-summary.md
 
-      # --- 7. 📦 Upload Summary Report ---
+      # ✅ 8. Upload final summary
       - name: Upload Summary Report
-        if: always() 
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-summary
