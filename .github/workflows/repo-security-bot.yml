@@ -84,7 +84,7 @@ jobs:
         continue-on-error: true
         uses: bridgecrewio/checkov-action@master
         with:
-          directory: .
+          directory: ${{ github.workspace }}
           output_format: json
           output_file_path: checkov_results.json # Output to root
 
