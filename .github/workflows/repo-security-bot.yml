@@ -79,14 +79,15 @@ jobs:
             echo '{"message": "No dependency files found, skipped Snyk scan."}' > reports/snyk.json
           fi
 
-      # --- 3. 🧱 IaC Scanning (Checkov) ---
+      # --- 3. 🧱 IaC Scanning (Checkov via CLI) ---
       - name: Install Checkov
         run: pip install checkov
-      
+
       - name: Run Checkov
         continue-on-error: true
         run: |
           checkov -d . -o json > reports/checkov_results.json || true
+
 
 
           
