@@ -22,10 +22,18 @@ jobs:
       # --- 1. 🕵️ Secrets Scanning (Gitleaks) ---
       - name: Run Gitleaks
         continue-on-error: true
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: "detect --source . --report-path reports/gitleaks.json --report-format json --exit-code 0"
-
+        run: |
+          echo "Pulling Gitleaks image..."
+          docker pull gitleaks/gitleaks:latest
+          
+          echo "Running Gitleaks..."
+          docker run --rm \
+            -v ${{ github.workspace }}:/repo \
+            gitleaks/gitleaks:latest detect \
+            --source /repo \
+            --report-path /repo/reports/gitleaks.json \
+            --report-format json \
+            --exit-code 0
       # --- 2. 🔍 Dependency Scanning (Snyk) ---
       - name: Setup Snyk
         uses: snyk/actions/setup@master
