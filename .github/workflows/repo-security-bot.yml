@@ -6,6 +6,8 @@ on:
   pull_request:
   schedule:
     - cron: "0 12 * * *" # runs daily at noon
+  # Allow manual triggering from the Actions tab
+  workflow_dispatch:
 
 jobs:
   security-scan:
@@ -22,11 +24,10 @@ jobs:
         continue-on-error: true
         uses: gitleaks/gitleaks-action@v2
         with:
-          # Use the action's dedicated inputs for clarity and robustness
+          # The action's inputs are all that's needed.
+          # 'continue-on-error: true' will ensure the job doesn't fail if secrets are found.
           report_path: reports/gitleaks.json
           report_format: json
-          # Pass other arguments to the binary
-          args: "detect --source . --exit-code 0"
 
       # --- 2. 🔍 Dependency Scanning (Snyk) ---
       - name: Setup Snyk
@@ -37,9 +38,12 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
+          # This ensures the script will exit if any command fails
+          set -e
           echo "Checking for dependency files..."
           if [ -f "package.json" ]; then
             echo "Node.js project detected."
+            # The '|| true' ensures the step continues even if snyk finds issues
             snyk test --json-file-output=reports/snyk.json || true
           elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "Pipfile" ]; then
             echo "Python project detected."
@@ -69,7 +73,7 @@ jobs:
             echo "No known dependency file detected. Skipping Snyk scan."
             echo '{"message": "No dependency files found, skipped Snyk scan."}' > reports/snyk.json
           fi
-          
+
       # --- 3. 🧱 IaC Scanning (Checkov) ---
       - name: Run Checkov
         continue-on-error: true
@@ -77,7 +81,8 @@ jobs:
         with:
           directory: .
           output_format: json
-          output_file_path: reports/checkov.json
+          # FIX: Output to a new, unambiguous filename to avoid the 'Is a directory' error.
+          output_file_path: reports/checkov_results.json
 
       # --- 4. 🐳 Docker Hardening (Dockle) ---
       - name: Run Dockle
@@ -89,9 +94,16 @@ jobs:
             # 1. BUILD THE IMAGE
             docker build -t my-scan-image:latest .
             
-            # 2. SCAN THE IMAGE (This now correctly outputs dockle.json)
+            # 2. PULL THE DOCKLE IMAGE
             docker pull goodwithtech/dockle
-            docker run --rm goodwithtech/dockle:latest \
+            
+            # 3. SCAN THE IMAGE
+            # FIX: Mount the host's Docker socket (-v /var/run/docker.sock:...)
+            # This allows the Dockle container to see the 'my-scan-image:latest'
+            # image that was just built by the runner.
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              goodwithtech/dockle:latest \
               -f json \
               -o reports/dockle.json \
               my-scan-image:latest || true
@@ -105,10 +117,13 @@ jobs:
       - name: Run Bandit
         continue-on-error: true
         run: |
+          # Check if any .py files exist
           if ls *.py >/dev/null 2>&1; then
+            echo "Python files found. Installing and running Bandit..."
             pip install bandit
             bandit -r . -f json -o reports/bandit.json || true
           else
+            echo "No Python files found. Skipping Bandit scan."
             echo '{"message": "No Python files found, skipped Bandit scan."}' > reports/bandit.json
           fi
 
@@ -119,7 +134,6 @@ jobs:
           echo "" >> reports/security-summary.md
 
           echo "## 🕵️ Gitleaks (Secrets Scan)" >> reports/security-summary.md
-          # Use -s to check if file exists AND is not empty
           if [ -s "reports/gitleaks.json" ]; then
             echo '```json' >> reports/security-summary.md
             cat reports/gitleaks.json >> reports/security-summary.md
@@ -140,9 +154,10 @@ jobs:
           echo "" >> reports/security-summary.md
 
           echo "## 🧱 Checkov (IaC Scan)" >> reports/security-summary.md
-          if [ -s "reports/checkov.json" ]; then
+          # FIX: Use the new filename 'checkov_results.json'
+          if [ -s "reports/checkov_results.json" ]; then
             echo '```json' >> reports/security-summary.md
-            cat reports/checkov.json >> reports/security-summary.md
+            cat reports/checkov_results.json >> reports/security-summary.md
             echo '```' >> reports/security-summary.md
           else
             echo "_No IaC files found or scan failed._" >> reports/security-summary.md
@@ -150,9 +165,8 @@ jobs:
           echo "" >> reports/security-summary.md
 
           echo "## 🐳 Dockle (Docker Hardening)" >> reports/security-summary.md
-          # This now correctly checks for dockle.json
           if [ -s "reports/dockle.json" ]; then
-            # We also check if it's the "skip" message
+            # Check if it's the "skip" message
             if grep -q "No Dockerfile found" reports/dockle.json; then
               echo "_No Dockerfile found._" >> reports/security-summary.md
             else
@@ -167,7 +181,7 @@ jobs:
 
           echo "## 🐍 Bandit (Python Security)" >> reports/security-summary.md
           if [ -s "reports/bandit.json" ]; then
-            # We also check if it's the "skip" message
+            # Check if it's the "skip" message
             if grep -q "No Python files found" reports/bandit.json; then
               echo "_No Python files found._" >> reports/security-summary.md
             else
