@@ -46,116 +46,83 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------
-      # DOWNLOAD ALL ARTIFACTS
-      # ---------------------------------------------------
-      - name: Download Gitleaks
-        uses: actions/download-artifact@v4
+      # Download artifacts with consistent folder names
+      - uses: actions/download-artifact@v4
         with:
           name: gitleaks-report
+          path: reports/gitleaks
 
-      - name: Download Snyk
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: snyk-report
+          path: reports/snyk
 
-      - name: Download Checkov
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: checkov-report
+          path: reports/checkov
 
-      - name: Download Dockle
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: dockle-report
+          path: reports/dockle
 
-      - name: Download Bandit
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: bandit-report
+          path: reports/bandit
+
+      # Debug files so you always know what’s actually downloaded
+      - name: Debug downloaded files
+        run: ls -R reports
 
       # ---------------------------------------------------
-      # MOVE ALL DOWNLOADED JSON REPORTS
-      # ---------------------------------------------------
-      - name: Move reports
-        run: |
-          mkdir -p reports
-
-          mv gitleaks-report/gitleaks.json reports/ || true
-          mv snyk-report/snyk.json reports/ || true
-          mv checkov-report/checkov_results.json reports/ || true
-          mv dockle-report/dockle.json reports/ || true
-          mv bandit-report/bandit.json reports/ || true
-
-          echo "Reports moved:"
-          ls -R reports
-
-      # ---------------------------------------------------
-      # GENERATE SUMMARY MARKDOWN
+      # Generate summary DIRECTLY in the right location
       # ---------------------------------------------------
       - name: Generate summary
         run: |
-          set -euo pipefail
           SUMMARY="reports/security-summary.md"
-
+          mkdir -p reports
           echo "# 🔒 Security Scan Summary" > "$SUMMARY"
           echo "" >> "$SUMMARY"
 
-          # Gitleaks
-          echo "## 🕵️ Gitleaks (Secrets Scan)" >> "$SUMMARY"
+          echo "## 🕵️ Gitleaks" >> "$SUMMARY"
           echo '```json' >> "$SUMMARY"
-          cat reports/gitleaks.json >> "$SUMMARY" || echo "{}" >> "$SUMMARY"
+          cat reports/gitleaks/gitleaks.json >> "$SUMMARY" || echo '{}' >> "$SUMMARY"
           echo '```' >> "$SUMMARY"
-          echo "" >> "$SUMMARY"
 
-          # Snyk
-          echo "## 🔍 Snyk (Dependency Scan)" >> "$SUMMARY"
+          echo "" >> "$SUMMARY"
+          echo "## 🔍 Snyk" >> "$SUMMARY"
           echo '```json' >> "$SUMMARY"
-          cat reports/snyk.json >> "$SUMMARY" || echo "{}" >> "$SUMMARY"
+          cat reports/snyk/snyk.json >> "$SUMMARY" || echo '{}' >> "$SUMMARY"
           echo '```' >> "$SUMMARY"
-          echo "" >> "$SUMMARY"
 
-          # Checkov
-          echo "## 🧱 Checkov (IaC Scan)" >> "$SUMMARY"
-          if command -v jq >/dev/null 2>&1; then
-            TOTAL_FAILED=$(jq -r 'map(.results.failed_checks | length) | add // 0' reports/checkov_results.json)
-            TOTAL_PASSED=$(jq -r 'map(.results.passed_checks | length) | add // 0' reports/checkov_results.json)
-            echo "**✅ Passed:** ${TOTAL_PASSED}   **❌ Failed:** ${TOTAL_FAILED}" >> "$SUMMARY"
-            echo "" >> "$SUMMARY"
-            echo '```json' >> "$SUMMARY"
-            jq -c '.[] | .results.failed_checks[]?' reports/checkov_results.json >> "$SUMMARY" || echo "{}" >> "$SUMMARY"
-            echo '```' >> "$SUMMARY"
-          else
-            echo "_jq not available; raw output below_" >> "$SUMMARY"
-            echo '```json' >> "$SUMMARY"
-            cat reports/checkov_results.json >> "$SUMMARY" || echo "{}" >> "$SUMMARY"
-            echo '```' >> "$SUMMARY"
-          fi
           echo "" >> "$SUMMARY"
-
-          # Dockle
-          echo "## 🐳 Dockle (Container Hardening)" >> "$SUMMARY"
+          echo "## 🧱 Checkov" >> "$SUMMARY"
           echo '```json' >> "$SUMMARY"
-          cat reports/dockle.json >> "$SUMMARY" || echo "{}" >> "$SUMMARY"
+          cat reports/checkov/checkov_results.json >> "$SUMMARY" || echo '{}' >> "$SUMMARY"
           echo '```' >> "$SUMMARY"
-          echo "" >> "$SUMMARY"
 
-          # Bandit
-          echo "## 🐍 Bandit (Python Security)" >> "$SUMMARY"
+          echo "" >> "$SUMMARY"
+          echo "## 🐳 Dockle" >> "$SUMMARY"
           echo '```json' >> "$SUMMARY"
-          cat reports/bandit.json >> "$SUMMARY" || echo "{}" >> "$SUMMARY"
+          cat reports/dockle/dockle.json >> "$SUMMARY" || echo '{}' >> "$SUMMARY"
+          echo '```' >> "$SUMMARY"
+
+          echo "" >> "$SUMMARY"
+          echo "## 🐍 Bandit" >> "$SUMMARY"
+          echo '```json' >> "$SUMMARY"
+          cat reports/bandit/bandit.json >> "$SUMMARY" || echo '{}' >> "$SUMMARY"
           echo '```' >> "$SUMMARY"
 
           echo "" >> "$SUMMARY"
           echo "---" >> "$SUMMARY"
-          echo "_Generated automatically by Repo Security Bot_" >> "$SUMMARY"
+          echo "_Generated by Repo Security Bot_" >> "$SUMMARY"
 
-          echo "SUMMARY GENERATED:"
-          ls -lh reports
+          echo "Final summary file:"
+          ls -lh reports/security-summary.md
 
-      # ---------------------------------------------------
-      # UPLOAD SUMMARY
-      # ---------------------------------------------------
+      # Upload summary file
       - name: Upload summary
         uses: actions/upload-artifact@v4
         with:
