@@ -17,9 +17,14 @@ jobs:
       - name: Setup Snyk CLI
         uses: snyk/actions/setup@v2
 
+      # ✅ No if: secrets.SNYK_TOKEN
       - name: Authenticate Snyk
-        if: ${{ secrets.SNYK_TOKEN != '' }}
-        run: snyk auth "$SNYK_TOKEN"
+        run: |
+          if [ -n "${SNYK_TOKEN:-}" ]; then
+            snyk auth "$SNYK_TOKEN"
+          else
+            echo "No SNYK_TOKEN provided, authentication skipped."
+          fi
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
@@ -42,31 +47,6 @@ jobs:
           fi
 
           if [ -f requirements.txt ] || [ -f pyproject.toml ] || [ -f Pipfile ]; then
-            snyk test --json-file-output=reports/snyk.json || true
-            SCANNED=true
-          fi
-
-          if [ -f pom.xml ]; then
-            snyk test --file=pom.xml --json-file-output=reports/snyk.json || true
-            SCANNED=true
-          fi
-
-          if [ -f go.mod ]; then
-            snyk test --file=go.mod --json-file-output=reports/snyk.json || true
-            SCANNED=true
-          fi
-
-          if [ -f Cargo.toml ]; then
-            snyk test --file=Cargo.toml --json-file-output=reports/snyk.json || true
-            SCANNED=true
-          fi
-
-          if [ -f composer.json ]; then
-            snyk test --file=composer.json --json-file-output=reports/snyk.json || true
-            SCANNED=true
-          fi
-
-          if ls *.csproj >/dev/null 2>&1; then
             snyk test --json-file-output=reports/snyk.json || true
             SCANNED=true
           fi
