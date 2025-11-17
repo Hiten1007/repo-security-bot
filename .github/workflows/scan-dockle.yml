@@ -1,6 +1,8 @@
 name: "Scan: Dockle"
 
 on:
+  push:
+  pull_request:
   workflow_call:
 
 jobs:
@@ -8,34 +10,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Run Dockle
+      - name: Detect Dockerfile
+        id: detect
+        run: |
+          if [ -f "Dockerfile" ]; then
+            echo "dockerfile=Dockerfile" >> $GITHUB_OUTPUT
+          elif [ -f "Dockerfile.txt" ]; then
+            echo "dockerfile=Dockerfile.txt" >> $GITHUB_OUTPUT
+          else
+            echo "dockerfile=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Docker image (if Dockerfile exists)
+        if: steps.detect.outputs.dockerfile != ''
+        run: |
+          docker build -t security-image:latest -f "${{ steps.detect.outputs.dockerfile }}" . || true
+
+      - name: Create reports directory
+        run: mkdir -p reports
+
+      - name: Pull Dockle
+        run: docker pull goodwithtech/dockle:latest || true
+
+      - name: Run Dockle scan
         continue-on-error: true
         run: |
-          mkdir -p reports
-
-          if [ -f "Dockerfile" ] || [ -f "Dockerfile.txt" ]; then
-            DOCKERFILE=$( [ -f Dockerfile ] && echo Dockerfile || echo Dockerfile.txt )
-            docker build -t security-image:latest -f "${DOCKERFILE}" . || true
-
-            docker pull goodwithtech/dockle:latest || true
-
+          if [ "${{ steps.detect.outputs.dockerfile }}" = "" ]; then
+            echo '{"message":"No Dockerfile found, skipped Dockle scan."}' > reports/dockle.json
+          else
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "${{ github.workspace }}/reports":/reports \
               goodwithtech/dockle:latest \
               -f json -o /reports/dockle.json security-image:latest || true
-          else
-            echo '{"message":"No Dockerfile found, skipped Dockle scan."}' > reports/dockle.json
+
+            # Human readable text version
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              goodwithtech/dockle:latest security-image:latest \
+              > reports/dockle.txt || true
           fi
 
+          # Ensure JSON exists
           if [ ! -s reports/dockle.json ]; then
             echo '{"message":"Dockle produced no output."}' > reports/dockle.json
           fi
 
-      - name: Upload artifact
+      - name: Upload Dockle artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dockle-report
-          path: reports/dockle.json
+          name: dockle-security-report
+          path: reports/
