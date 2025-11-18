@@ -62,5 +62,5 @@ jobs:
       - name: Upload Dockle artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dockle-security-report
+          name: dockle-report
           path: reports/
