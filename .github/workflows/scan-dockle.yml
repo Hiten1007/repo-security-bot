@@ -24,7 +24,7 @@ jobs:
             echo "dockerfile=" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build Docker image (if Dockerfile exists)
+      - name: Build Docker image
         if: steps.detect.outputs.dockerfile != ''
         run: |
           docker build -t security-image:latest -f "${{ steps.detect.outputs.dockerfile }}" . || true
@@ -48,52 +48,58 @@ jobs:
               goodwithtech/dockle:latest \
               -f json -o /reports/dockle.json security-image:latest || true
 
-            # Text output (human readable)
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               goodwithtech/dockle:latest security-image:latest \
               > reports/dockle.txt || true
           fi
 
-          if [ ! -s reports/dockle.json ]; then
-            echo '{"message":"Dockle produced no output."}' > reports/dockle.json
-          fi
-
-      - name: Generate Dockle Markdown Summary
+      ####################################################################
+      # 💎 BEAUTIFUL REPORT GENERATION (PRETTIFIED)
+      ####################################################################
+           - name: Generate Pretty Markdown Report
         run: |
-          JSON="reports/dockle.json"
-          OUT="reports/dockle.md"
+          echo "## 🛡️ Dockle Security Summary" > reports/dockle.md
+          echo "" >> reports/dockle.md
 
-          echo "# 🐳 Dockle Scan Summary" > "$OUT"
-          echo "" >> "$OUT"
+          # Detect if JSON is valid array
+          TYPE=$(jq -r 'type' reports/dockle.json)
 
-          if ! command -v jq >/dev/null 2>&1; then
-            sudo apt-get install -y jq
+          if [ "$TYPE" != "array" ]; then
+            echo "### ℹ️ Dockle did not produce issue list" >> reports/dockle.md
+            echo "" >> reports/dockle.md
+            echo "Raw Output:" >> reports/dockle.md
+            echo '```json' >> reports/dockle.md
+            cat reports/dockle.json >> reports/dockle.md
+            echo '```' >> reports/dockle.md
+            exit 0
           fi
 
-          # Summary table
-          echo "## 🔎 Summary" >> "$OUT"
-          echo "" >> "$OUT"
-          echo "| Fatal | Warn | Info | Skip | Pass |" >> "$OUT"
-          echo "|------|------|------|------|------|" >> "$OUT"
+          # Extract counts
+          FATAL=$(jq '[.[] | select(.level=="FATAL")] | length' reports/dockle.json)
+          WARN=$(jq '[.[] | select(.level=="WARN")] | length' reports/dockle.json)
+          INFO=$(jq '[.[] | select(.level=="INFO")] | length' reports/dockle.json)
 
-          jq -r '
-            .summary |
-            "| \(.fatal) | \(.warn) | \(.info) | \(.skip) | \(.pass) |"
-          ' "$JSON" >> "$OUT"
+          echo "### 🔍 Summary" >> reports/dockle.md
+          echo "- 🔴 **FATAL:** $FATAL" >> reports/dockle.md
+          echo "- 🟡 **WARN:** $WARN" >> reports/dockle.md
+          echo "- 🟢 **INFO:** $INFO" >> reports/dockle.md
+          echo "" >> reports/dockle.md
 
-          echo "" >> "$OUT"
-          echo "## 📋 Detailed Findings" >> "$OUT"
-          echo "" >> "$OUT"
+          #############################
+          echo "### 🔴 FATAL Issues" >> reports/dockle.md
+          echo "| Code | Message | File |" >> reports/dockle.md
+          echo "|------|---------|------|" >> reports/dockle.md
+          jq -r '.[] | select(.level=="FATAL") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
+          echo "" >> reports/dockle.md
 
-          jq -r '
-            .details[] |
-            "### \(.code) - \(.title)\n- **Level:** \(.level)\n- **Alerts:**\n" +
-            ( .alerts | map("  - " + .) | join("\n") ) + "\n"
-          ' "$JSON" >> "$OUT"
+          echo "### 🟡 WARN Issues" >> reports/dockle.md
+          echo "| Code | Message | File |" >> reports/dockle.md
+          echo "|------|---------|------|" >> reports/dockle.md
+          jq -r '.[] | select(.level=="WARN") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
+          echo "" >> reports/dockle.md
 
-      - name: Upload Dockle artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dockle-report
-          path: reports/
+          echo "### 🟢 INFO Issues" >> reports/dockle.md
+          echo "| Code | Message | File |" >> reports/dockle.md
+          echo "|------|---------|------|" >> reports/dockle.md
+          jq -r '.[] | select(.level=="INFO") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
