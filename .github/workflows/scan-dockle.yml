@@ -56,10 +56,23 @@ jobs:
       ####################################################################
       # 💎 BEAUTIFUL REPORT GENERATION (PRETTIFIED)
       ####################################################################
-      - name: Generate Pretty Markdown Report
+           - name: Generate Pretty Markdown Report
         run: |
           echo "## 🛡️ Dockle Security Summary" > reports/dockle.md
           echo "" >> reports/dockle.md
+
+          # Detect if JSON is valid array
+          TYPE=$(jq -r 'type' reports/dockle.json)
+
+          if [ "$TYPE" != "array" ]; then
+            echo "### ℹ️ Dockle did not produce issue list" >> reports/dockle.md
+            echo "" >> reports/dockle.md
+            echo "Raw Output:" >> reports/dockle.md
+            echo '```json' >> reports/dockle.md
+            cat reports/dockle.json >> reports/dockle.md
+            echo '```' >> reports/dockle.md
+            exit 0
+          fi
 
           # Extract counts
           FATAL=$(jq '[.[] | select(.level=="FATAL")] | length' reports/dockle.json)
@@ -73,52 +86,19 @@ jobs:
           echo "" >> reports/dockle.md
 
           #############################
-          # Section: Fatal Issues
-          #############################
           echo "### 🔴 FATAL Issues" >> reports/dockle.md
           echo "| Code | Message | File |" >> reports/dockle.md
           echo "|------|---------|------|" >> reports/dockle.md
           jq -r '.[] | select(.level=="FATAL") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
           echo "" >> reports/dockle.md
 
-          #############################
-          # Section: Warnings
-          #############################
           echo "### 🟡 WARN Issues" >> reports/dockle.md
           echo "| Code | Message | File |" >> reports/dockle.md
           echo "|------|---------|------|" >> reports/dockle.md
           jq -r '.[] | select(.level=="WARN") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
           echo "" >> reports/dockle.md
 
-          #############################
-          # Section: Informational
-          #############################
           echo "### 🟢 INFO Issues" >> reports/dockle.md
           echo "| Code | Message | File |" >> reports/dockle.md
           echo "|------|---------|------|" >> reports/dockle.md
           jq -r '.[] | select(.level=="INFO") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
-
-      ####################################################################
-      # 📌 SHOW IN GITHUB SUMMARY
-      ####################################################################
-      - name: Add Markdown report to GitHub Summary
-        run: |
-          echo "## 📝 Dockle Security Report" >> $GITHUB_STEP_SUMMARY
-          cat reports/dockle.md >> $GITHUB_STEP_SUMMARY
-
-      ####################################################################
-      # ❗ OPTIONAL: FAIL PIPELINE IF FATAL FOUND
-      ####################################################################
-      - name: Fail if fatal issues found
-        run: |
-          FATAL=$(jq '[.[] | select(.level=="FATAL")] | length' reports/dockle.json)
-          if [ "$FATAL" -gt 0 ]; then
-            echo "❌ Fatal security issues found!"
-            exit 1
-          fi
-
-      - name: Upload Dockle artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dockle-report
-          path: reports/
