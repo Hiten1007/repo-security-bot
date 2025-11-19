@@ -41,23 +41,56 @@ jobs:
           if [ "${{ steps.detect.outputs.dockerfile }}" = "" ]; then
             echo '{"message":"No Dockerfile found, skipped Dockle scan."}' > reports/dockle.json
           else
+            # JSON output
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "${{ github.workspace }}/reports":/reports \
               goodwithtech/dockle:latest \
               -f json -o /reports/dockle.json security-image:latest || true
 
-            # Human readable text version
+            # Text output (human readable)
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               goodwithtech/dockle:latest security-image:latest \
               > reports/dockle.txt || true
           fi
 
-          # Ensure JSON exists
           if [ ! -s reports/dockle.json ]; then
             echo '{"message":"Dockle produced no output."}' > reports/dockle.json
           fi
+
+      - name: Generate Dockle Markdown Summary
+        run: |
+          JSON="reports/dockle.json"
+          OUT="reports/dockle.md"
+
+          echo "# 🐳 Dockle Scan Summary" > "$OUT"
+          echo "" >> "$OUT"
+
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get install -y jq
+          fi
+
+          # Summary table
+          echo "## 🔎 Summary" >> "$OUT"
+          echo "" >> "$OUT"
+          echo "| Fatal | Warn | Info | Skip | Pass |" >> "$OUT"
+          echo "|------|------|------|------|------|" >> "$OUT"
+
+          jq -r '
+            .summary |
+            "| \(.fatal) | \(.warn) | \(.info) | \(.skip) | \(.pass) |"
+          ' "$JSON" >> "$OUT"
+
+          echo "" >> "$OUT"
+          echo "## 📋 Detailed Findings" >> "$OUT"
+          echo "" >> "$OUT"
+
+          jq -r '
+            .details[] |
+            "### \(.code) - \(.title)\n- **Level:** \(.level)\n- **Alerts:**\n" +
+            ( .alerts | map("  - " + .) | join("\n") ) + "\n"
+          ' "$JSON" >> "$OUT"
 
       - name: Upload Dockle artifacts
         uses: actions/upload-artifact@v4
