@@ -3,7 +3,14 @@
 name: "Scan: Bandit"
 
 on:
-  workflow_call:
+  push:
+    branches: 
+      - main
+      - add-bandit-scan   # ← your personal branch name (change if needed)
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   bandit:
