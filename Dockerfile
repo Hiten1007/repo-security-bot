@@ -1,30 +1,38 @@
-# Safe base image (pinned to slim + digest recommended)
-FROM ubuntu:22.04
+# ❌ BAD: Using 'latest' tag (Unpredictable builds)
+# [DKL-DI-0001] Avoid latest tag
+FROM ubuntu:latest
 
-# Add OCI labels (no secrets)
-LABEL maintainer="admin@example.com" \
-      org.opencontainers.image.description="Securely rebuilt image with Dockle best practices."
+# ❌ BAD: No MAINTAINER or Labels (CIS Recommendation)
+# [CIS-DI-0005] Enable Content Trust (checked via labels sometimes)
 
-# Create a non-root user
-RUN useradd -m -s /bin/bash appuser
-
-# Update, install dependencies, and clean up in one layer
+# ❌ BAD: Installing sudo is a huge red flag
+# [DKL-DI-0006] Avoid sudo command
 RUN apt-get update && \
-    apt-get install -y vim curl && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y sudo vim curl python3
 
-# Use COPY instead of ADD
-COPY . /app
+# ❌ BAD: Leaving the apt cache (Bloats image, hides attack surface)
+# [DKL-DI-0005] Clear apt-get caches
+# (Notice I deleted the 'rm -rf /var/lib/apt/lists/*' line)
+
+# ❌ BAD: Using ADD instead of COPY (ADD can fetch remote URLs/zip bombs)
+# [DKL-DI-0004] Use COPY instead of ADD
+ADD . /app
+
 WORKDIR /app
 
-# Switch to non-root user
-USER appuser
+# ❌ BAD: Hardcoded "Secret" (Dockle looks for common secret filenames)
+# [DKL-DI-0002] Avoid sensitive directory or file
+ENV AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+ENV AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
-# Add HEALTHCHECK (Dockle recommendation)
-HEALTHCHECK --interval=60s --timeout=10s \
-  CMD curl -f http://localhost:80/ || exit 1
+# ❌ BAD: Running as Root (The User instruction is missing!)
+# [CIS-DI-0001] Create a user for the container
+# [DKL-DI-0001] Avoid running as root
 
-# Expose port 80 only
+# ❌ BAD: Missing Healthcheck
+# [CIS-DI-0006] Add HEALTHCHECK instruction to the container image
+
+# ❌ BAD: Privileged Port 80 (Requires root)
 EXPOSE 80
 
-CMD ["bash"]
+CMD ["python3", "-m", "http.server", "80"]

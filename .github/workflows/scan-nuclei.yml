@@ -17,45 +17,40 @@ jobs:
       # 2. RUN the App
       - name: Start Container
         run: |
-          # Start container in background
           docker run -d -p 3000:3000 --name test-container my-app:test
           
-          # Robust Wait Loop
           echo "Waiting for app to start on localhost:3000..."
           for i in {1..30}; do
             if curl -s http://localhost:3000 > /dev/null; then
               echo "✅ App is up!"
               break
             fi
-            echo "Waiting... ($i/30)"
             sleep 1
           done
 
-      # 3. ATTACK with Nuclei (Fixed)
+      # ⚠️ NEW STEP: Create the directory BEFORE the scan
+      - name: Create reports directory
+        run: mkdir -p reports
+
+      # 3. ATTACK with Nuclei
       - name: Run Nuclei DAST Scan
         uses: projectdiscovery/nuclei-action@main
         with:
           target: "http://localhost:3000"
-          # ⚠️ FIX: Pass everything via 'flags' to avoid Action/Binary version conflicts
-          # -jsonl: New flag for JSON Lines output (replaces -json)
-          # -tags: Filters the checks
-          # -o: Output file
+          # Now this will work because 'reports/' exists
           flags: "-tags cve,misconfig,exposure,token -jsonl -o reports/nuclei.json"
 
       # 4. Parse Report
       - name: Generate Report
         if: always()
         run: |
-          mkdir -p reports
+          # No need to mkdir here anymore, but safe to keep
           echo "## ☢️ Nuclei DAST Report" > reports/nuclei.md
           
-          # Check if report exists
           if [ ! -s reports/nuclei.json ]; then
              echo "✅ **No vulnerabilities found (or scan failed to connect).**" >> reports/nuclei.md
           else
-             # Convert JSON Lines (NDJSON) to JSON Array for jq
              jq -s '.' reports/nuclei.json > reports/clean.json
-             
              COUNT=$(jq 'length' reports/clean.json)
              
              if [ "$COUNT" == "0" ]; then
@@ -66,17 +61,6 @@ jobs:
                 echo "### 🔍 Top Findings" >> reports/nuclei.md
                 echo "| Severity | Name | Path |" >> reports/nuclei.md
                 echo "| :--- | :--- | :--- |" >> reports/nuclei.md
-                
                 jq -r '.[] | "| **\(.info.severity)** | \(.info.name) | \(.matched_at) |"' reports/clean.json | head -n 10 >> reports/nuclei.md
              fi
           fi
-
-      # 5. Cleanup
-      - name: Stop Container
-        if: always()
-        run: docker stop test-container || true
-      
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nuclei-report
-          path: reports/nuclei.md
