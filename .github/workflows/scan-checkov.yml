@@ -13,29 +13,31 @@ jobs:
       - name: Install Checkov
         run: pip install --upgrade pip checkov
 
-      - name: Run Checkov and Normalize JSON
+      - name: Run Checkov and Produce Clean JSON
         continue-on-error: true
         run: |
           mkdir -p reports
 
-          # Produce a VALID JSON ARRAY guaranteed
-          checkov -d . -o json --no-guide \
-            | jq -s '.' > reports/checkov_results.json || {
-              echo "[]" > reports/checkov_results.json
-            }
+          # Run Checkov, remove noise, turn into valid JSON array
+          checkov -d . -o json --no-guide --quiet 2>/dev/null \
+            | jq -s '.' > reports/raw.json || echo "[]" > reports/raw.json
+
+          # Normalize: if raw.json is an object → wrap into an array
+          jq 'if type=="object" then [.] else . end' reports/raw.json \
+            > reports/checkov_results.json
 
       - name: Generate Pretty Markdown Report
         run: |
           echo "## 🏗 Checkov IaC Security Report" > reports/checkov.md
           echo "" >> reports/checkov.md
 
-          # If empty array → no misconfigurations
+          # If JSON array is empty → no findings
           if jq -e 'length == 0' reports/checkov_results.json > /dev/null; then
             echo "✅ *No misconfigurations found.*" >> reports/checkov.md
             exit 0
           fi
 
-          # Loop through each check_type block
+          # Loop through each scan block
           jq -c '.[]' reports/checkov_results.json | while read item; do
             TYPE=$(echo "$item" | jq -r '.check_type')
             FAILED=$(echo "$item" | jq -r '.summary.failed')
