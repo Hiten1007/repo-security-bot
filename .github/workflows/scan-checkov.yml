@@ -53,64 +53,74 @@ jobs:
           else
             echo "Running Checkov scan on root directory..."
             
-            # Capture stdout and stderr separately
+            # Use --output-file-path to write directly to file
+            # Checkov will create results_json.json in the reports directory
             checkov --directory . --framework terraform --output json \
-              --output-file-path reports 2>reports/stderr.log 1>reports/stdout.log || true
+              --output-file-path reports 2>&1 || true
             
-            echo "=== Checkov stderr ==="
-            cat reports/stderr.log || echo "No stderr"
             echo ""
-            echo "=== Checkov stdout ==="  
-            cat reports/stdout.log || echo "No stdout"
-            echo ""
-            
-            # Check what files were created
-            echo "=== Files in reports/ ==="
+            echo "=== Files created in reports/ ==="
             ls -la reports/
+            echo ""
             
-            # Checkov creates results_json.json by default
+            # Checkov creates results_json.json by default with --output-file-path
             if [ -f "reports/results_json.json" ]; then
-              echo "Found results_json.json, using it..."
+              echo "Found results_json.json ($(wc -c < reports/results_json.json) bytes)"
               cp reports/results_json.json reports/raw.json
-            elif [ -f "reports/stdout.log" ] && [ -s "reports/stdout.log" ]; then
-              echo "Using stdout as raw data..."
-              cp reports/stdout.log reports/raw.json
+              
+              # Show first part of the file
+              echo "=== First 100 lines of results ==="
+              head -100 reports/raw.json
+              echo ""
             else
-              echo "No results found, trying direct file scan..."
+              echo "ERROR: results_json.json not created!"
+              echo "Trying direct file scan as fallback..."
               checkov --file main.tf --framework terraform --output json \
-                --output-file-path reports 2>&1 || echo "[]" > reports/raw.json
+                --output-file-path reports 2>&1 || true
               
               if [ -f "reports/results_json.json" ]; then
                 cp reports/results_json.json reports/raw.json
+              else
+                echo "[]" > reports/raw.json
               fi
             fi
+          fi
+          
+          # Validate JSON before processing
+          if jq empty reports/raw.json 2>/dev/null; then
+            echo "✓ Valid JSON detected"
             
-            # Fallback to empty array if still nothing
-            if [ ! -f "reports/raw.json" ]; then
-              echo "[]" > reports/raw.json
+            # Check structure and normalize
+            RAW_TYPE=$(jq -r 'type' reports/raw.json)
+            echo "JSON type: $RAW_TYPE"
+            
+            if [ "$RAW_TYPE" = "object" ]; then
+              echo "Wrapping object in array..."
+              jq '[.]' reports/raw.json > reports/checkov_results.json
+            elif [ "$RAW_TYPE" = "array" ]; then
+              echo "Already an array, copying..."
+              cp reports/raw.json reports/checkov_results.json
+            else
+              echo "Unexpected type, wrapping anyway..."
+              jq -s '.' reports/raw.json > reports/checkov_results.json
             fi
+          else
+            echo "✗ Invalid JSON detected, using empty array"
+            echo "[]" > reports/checkov_results.json
           fi
           
-          # Show raw output for debugging
-          echo "=== Raw Checkov Output (first 200 lines) ==="
-          head -200 reports/raw.json
+          # Show final results summary
           echo ""
-          echo "=== File size ==="
-          ls -lh reports/raw.json
-          
-          # Check if raw.json is actually empty or just []
-          if [ -f "reports/raw.json" ]; then
-            RAW_SIZE=$(cat reports/raw.json | jq -e 'if type=="array" then length elif type=="object" then 1 else 0 end' 2>/dev/null || echo "0")
-            echo "Raw JSON contains $RAW_SIZE elements"
-          fi
-          
-          # Normalize: if raw.json is an object → wrap into an array
-          jq 'if type=="object" then [.] else . end' reports/raw.json \
-            > reports/checkov_results.json 2>/dev/null || echo "[]" > reports/checkov_results.json
-          
-          # Debug output
-          echo "=== Processed Results (pretty) ==="
-          cat reports/checkov_results.json | jq '.' || cat reports/checkov_results.json
+          echo "=== Final Results Summary ==="
+          jq -r 'if type=="array" then 
+                   if length == 0 then "No results" 
+                   else "Found \(length) result block(s)" 
+                   end
+                 elif type=="object" then 
+                   "Single object result (check_type: \(.check_type // "unknown"))"
+                 else 
+                   "Unexpected format"
+                 end' reports/checkov_results.json
       
       - name: Generate Pretty Markdown Report
         run: |
