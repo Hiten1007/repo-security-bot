@@ -16,7 +16,6 @@ jobs:
   gitleaks:
     uses: arinagrawal05/repo-security-bot/.github/workflows/scan-gitleaks.yml@main
 
-  # Moved Bandit here (replacing Snyk)
   bandit:
     uses: arinagrawal05/repo-security-bot/.github/workflows/scan-bandit.yml@main
 
@@ -26,9 +25,8 @@ jobs:
   dockle:
     uses: arinagrawal05/repo-security-bot/.github/workflows/scan-dockle.yml@main
 
-  # Added Jit scanner
-  jit:
-    uses: arinagrawal05/repo-security-bot/.github/workflows/scan-jit.yml@main
+  nuclei:
+    uses: arinagrawal05/repo-security-bot/.github/workflows/scan-nuclei.yml@main
 
   # ---------------------------------------------------
   # Summary Job
@@ -43,7 +41,7 @@ jobs:
       - bandit
       - checkov
       - dockle
-      - jit
+      - nuclei
 
     steps:
       - name: Checkout repo
@@ -64,10 +62,7 @@ jobs:
           echo "" >> "$SUMMARY"
 
           # Include each scanner's Markdown if exists
-          # Snyk removed, Bandit moved up, Jit added
-          for scanner in gitleaks bandit checkov dockle jit; do
-            # Note: Ensure the artifacts are named appropriately in their respective workflows
-            # e.g., 'jit-report' containing 'jit.md'
+          for scanner in gitleaks bandit checkov dockle nuclei; do
             if [ -f reports/${scanner}-report/${scanner}.md ]; then
               echo "## ${scanner^^} Report" >> "$SUMMARY"
               cat reports/${scanner}-report/${scanner}.md >> "$SUMMARY"
