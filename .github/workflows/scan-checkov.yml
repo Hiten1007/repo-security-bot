@@ -17,7 +17,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p reports
-          checkov -d . --quiet -o json > reports/checkov_results.json || true
+          checkov -d . -o json --no-guide | jq '.' > reports/checkov_results.json || echo "[]" > reports/checkov_results.json
 
           if [ ! -s reports/checkov_results.json ]; then
             echo "[]" > reports/checkov_results.json
