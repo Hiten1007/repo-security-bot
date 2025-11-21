@@ -1,10 +1,6 @@
 name: "Scan: Checkov"
 on:
-  push:
-    branches: [main, master, develop]
-  pull_request:
-  workflow_dispatch:  # Manual trigger
-  workflow_call:      # Can also be called by other workflows
+  workflow_call:
 jobs:
   checkov:
     runs-on: ubuntu-latest
