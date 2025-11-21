@@ -56,10 +56,10 @@ jobs:
           echo "## 🛡️ Dockle Security Summary" > reports/dockle.md
           echo "" >> reports/dockle.md
 
-          # Detect if JSON is valid array
-          TYPE=$(jq -r 'type' reports/dockle.json)
+          # 1. Check if 'details' array exists
+          DETAILS_TYPE=$(jq -r '.details | type' reports/dockle.json)
 
-          if [ "$TYPE" != "array" ]; then
+          if [ "$DETAILS_TYPE" != "array" ]; then
             echo "### ℹ️ Dockle did not produce issue list" >> reports/dockle.md
             echo "Raw Output:" >> reports/dockle.md
             echo '```json' >> reports/dockle.md
@@ -68,34 +68,40 @@ jobs:
             exit 0
           fi
 
-          # Extract counts
-          FATAL=$(jq '[.[] | select(.level=="FATAL")] | length' reports/dockle.json)
-          WARN=$(jq '[.[] | select(.level=="WARN")] | length' reports/dockle.json)
-          INFO=$(jq '[.[] | select(.level=="INFO")] | length' reports/dockle.json)
+          # 2. Extract counts directly from the summary block
+          FATAL=$(jq '.summary.fatal' reports/dockle.json)
+          WARN=$(jq '.summary.warn' reports/dockle.json)
+          INFO=$(jq '.summary.info' reports/dockle.json)
+          PASS=$(jq '.summary.pass' reports/dockle.json)
 
           echo "### 🔍 Summary" >> reports/dockle.md
           echo "- 🔴 **FATAL:** $FATAL" >> reports/dockle.md
           echo "- 🟡 **WARN:** $WARN" >> reports/dockle.md
           echo "- 🟢 **INFO:** $INFO" >> reports/dockle.md
+          echo "- ✅ **PASS:** $PASS" >> reports/dockle.md
           echo "" >> reports/dockle.md
 
           #############################
+          # 3. Loop through .details[] instead of root .[]
+          #############################
+          
           echo "### 🔴 FATAL Issues" >> reports/dockle.md
-          echo "| Code | Message | File |" >> reports/dockle.md
-          echo "|------|---------|------|" >> reports/dockle.md
-          jq -r '.[] | select(.level=="FATAL") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
+          echo "| Code | Message |" >> reports/dockle.md
+          echo "|------|---------|" >> reports/dockle.md
+          # Note: .alerts is an array, we join them for cleaner display
+          jq -r '.details[] | select(.level=="FATAL") | "| \(.code) | \(.title) |"' reports/dockle.json >> reports/dockle.md
           echo "" >> reports/dockle.md
 
           echo "### 🟡 WARN Issues" >> reports/dockle.md
-          echo "| Code | Message | File |" >> reports/dockle.md
-          echo "|------|---------|------|" >> reports/dockle.md
-          jq -r '.[] | select(.level=="WARN") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
+          echo "| Code | Message |" >> reports/dockle.md
+          echo "|------|---------|" >> reports/dockle.md
+          jq -r '.details[] | select(.level=="WARN") | "| \(.code) | \(.title) |"' reports/dockle.json >> reports/dockle.md
           echo "" >> reports/dockle.md
 
           echo "### 🟢 INFO Issues" >> reports/dockle.md
-          echo "| Code | Message | File |" >> reports/dockle.md
-          echo "|------|---------|------|" >> reports/dockle.md
-          jq -r '.[] | select(.level=="INFO") | "| \(.code) | \(.title) | \(.target) |"' reports/dockle.json >> reports/dockle.md
+          echo "| Code | Message |" >> reports/dockle.md
+          echo "|------|---------|" >> reports/dockle.md
+          jq -r '.details[] | select(.level=="INFO") | "| \(.code) | \(.title) |"' reports/dockle.json >> reports/dockle.md
 
       # ⬇️ THIS WAS MISSING ⬇️
       - name: Upload Dockle Report

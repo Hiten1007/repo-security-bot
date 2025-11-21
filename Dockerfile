@@ -35,4 +35,4 @@ ENV AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 # ❌ BAD: Privileged Port 80 (Requires root)
 EXPOSE 8080
 
-CMD ["python3", "-m", "http.server", "80"]
+CMD ["python3", "-m", "http.server", "8080"]
