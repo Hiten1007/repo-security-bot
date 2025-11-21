@@ -33,6 +33,6 @@ ENV AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 # [CIS-DI-0006] Add HEALTHCHECK instruction to the container image
 
 # ❌ BAD: Privileged Port 80 (Requires root)
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["python3", "-m", "http.server", "80"]
